@@ -366,6 +366,9 @@ async function startServer(): Promise<void> {
   } catch (error) {
     console.error('Failed to initialize CMS storage:', error);
     if (isSqlConfigured()) {
+      console.error(
+        'SQL init failed — API will not start. Check MSSQL_PASSWORD is quoted if it contains $. Run: npm run db:test',
+      );
       process.exit(1);
     }
   }
