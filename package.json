@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "start": "NODE_ENV=production tsx src/index.ts",
     "db:init": "tsx src/db/runInit.ts",
     "db:migrate-saas": "tsx src/db/runMigrateSaas.ts",
     "lint": "tsc --noEmit"

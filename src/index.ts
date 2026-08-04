@@ -96,12 +96,33 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-app.get('/api/health', (_req, res) => {
-  res.json({
+app.get('/api/health', async (_req, res) => {
+  const payload: {
+    ok: boolean;
+    storage: ReturnType<typeof getStorageMode>;
+    sqlConfigured: boolean;
+    sqlConnected?: boolean;
+    sqlError?: string;
+  } = {
     ok: true,
     storage: getStorageMode(),
     sqlConfigured: isSqlConfigured(),
-  });
+  };
+
+  if (isSqlConfigured()) {
+    try {
+      const { getPool } = await import('./db/pool.ts');
+      const pool = await getPool();
+      await pool.request().query('SELECT 1 AS ok');
+      payload.sqlConnected = true;
+    } catch (error) {
+      payload.ok = false;
+      payload.sqlConnected = false;
+      payload.sqlError = error instanceof Error ? error.message : 'SQL connection failed';
+    }
+  }
+
+  res.status(payload.ok ? 200 : 503).json(payload);
 });
 
 app.get('/api/content', async (_req, res) => {

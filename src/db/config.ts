@@ -19,6 +19,8 @@ export function getSqlConfig(): SqlConfig {
       encrypt: process.env.MSSQL_ENCRYPT === 'true',
       trustServerCertificate: process.env.MSSQL_TRUST_SERVER_CERTIFICATE !== 'false',
     },
+    connectionTimeout: Number(process.env.MSSQL_CONNECTION_TIMEOUT ?? 8_000),
+    requestTimeout: Number(process.env.MSSQL_REQUEST_TIMEOUT ?? 15_000),
     pool: {
       max: 10,
       min: 0,
