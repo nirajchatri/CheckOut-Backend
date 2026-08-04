@@ -1,7 +1,11 @@
 import type { config as SqlConfig } from 'mssql';
 
+function env(name: string): string {
+  return (process.env[name] ?? '').trim();
+}
+
 export function isSqlConfigured(): boolean {
-  return Boolean(process.env.MSSQL_SERVER && process.env.MSSQL_USER && process.env.MSSQL_PASSWORD);
+  return Boolean(env('MSSQL_SERVER') && env('MSSQL_USER') && env('MSSQL_PASSWORD'));
 }
 
 export function getSqlConfig(): SqlConfig {
@@ -10,11 +14,11 @@ export function getSqlConfig(): SqlConfig {
   }
 
   return {
-    server: process.env.MSSQL_SERVER!,
-    port: Number(process.env.MSSQL_PORT ?? 1433),
-    database: process.env.MSSQL_DATABASE ?? 'checkout',
-    user: process.env.MSSQL_USER!,
-    password: process.env.MSSQL_PASSWORD!,
+    server: env('MSSQL_SERVER'),
+    port: Number(env('MSSQL_PORT') || 1433),
+    database: env('MSSQL_DATABASE') || 'checkout',
+    user: env('MSSQL_USER'),
+    password: env('MSSQL_PASSWORD'),
     options: {
       encrypt: process.env.MSSQL_ENCRYPT === 'true',
       trustServerCertificate: process.env.MSSQL_TRUST_SERVER_CERTIFICATE !== 'false',
