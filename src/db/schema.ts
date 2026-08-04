@@ -76,6 +76,39 @@ BEGIN
     updated_at DATETIME2 NOT NULL CONSTRAINT DF_cms_meta_updated DEFAULT (SYSUTCDATETIME())
   );
 END;
+
+IF OBJECT_ID(N'dbo.enquiries', N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.enquiries (
+    enquiry_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    name NVARCHAR(200) NOT NULL,
+    email NVARCHAR(320) NOT NULL,
+    mobile NVARCHAR(30) NOT NULL,
+    address NVARCHAR(500) NOT NULL,
+    city NVARCHAR(100) NOT NULL CONSTRAINT DF_enquiries_city DEFAULT (''),
+    state NVARCHAR(100) NOT NULL CONSTRAINT DF_enquiries_state DEFAULT (''),
+    pin NVARCHAR(10) NOT NULL CONSTRAINT DF_enquiries_pin DEFAULT (''),
+    message NVARCHAR(MAX) NOT NULL,
+    ip_address NVARCHAR(45) NULL,
+    created_at DATETIME2 NOT NULL CONSTRAINT DF_enquiries_created DEFAULT (SYSUTCDATETIME())
+  );
+  CREATE INDEX IX_enquiries_created ON dbo.enquiries (created_at DESC);
+END;
+
+IF COL_LENGTH(N'dbo.enquiries', N'city') IS NULL
+BEGIN
+  ALTER TABLE dbo.enquiries ADD city NVARCHAR(100) NOT NULL CONSTRAINT DF_enquiries_city DEFAULT ('');
+END;
+
+IF COL_LENGTH(N'dbo.enquiries', N'state') IS NULL
+BEGIN
+  ALTER TABLE dbo.enquiries ADD state NVARCHAR(100) NOT NULL CONSTRAINT DF_enquiries_state DEFAULT ('');
+END;
+
+IF COL_LENGTH(N'dbo.enquiries', N'pin') IS NULL
+BEGIN
+  ALTER TABLE dbo.enquiries ADD pin NVARCHAR(10) NOT NULL CONSTRAINT DF_enquiries_pin DEFAULT ('');
+END;
 `;
 
 export async function ensureSchema(): Promise<void> {

@@ -4,7 +4,6 @@ import cors from 'cors';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
-import nodemailer from 'nodemailer';
 import {
   CMS_IMAGE_KEYS,
   mergeCmsPayload,
@@ -12,7 +11,9 @@ import {
   mergeSectionOrder,
 } from './content/cmsDefaults.ts';
 import { isSqlConfigured } from './db/config.ts';
+import { insertEnquiry } from './db/enquiryStore.ts';
 import { generateOtp, hashValue } from './crypto.ts';
+import { createMailer, sendMail } from './mailer.ts';
 import { upload } from './multer.ts';
 import { getStorageMode, initializeStore, readContent, writeContent } from './store.ts';
 import {
@@ -28,6 +29,8 @@ const ADMIN_EMAIL = (process.env.CMS_ADMIN_EMAIL ?? 'nirajchatri@gmail.com').toL
 const JWT_SECRET = process.env.JWT_SECRET ?? 'change-me-in-production';
 const COOKIE_NAME = 'checkout_cms_session';
 const OTP_TTL_MS = 10 * 60 * 1000;
+const ENQUIRY_TO_EMAIL = (process.env.ENQUIRY_TO_EMAIL ?? 'niraj@checkout.pe').toLowerCase();
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type OtpRecord = {
   hash: string;
@@ -43,22 +46,34 @@ function getJwtSecret(): string {
   return JWT_SECRET;
 }
 
-function createMailer() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+function formatEnquiryEmail(record: {
+  name: string;
+  email: string;
+  mobile: string;
+  address: string;
+  city: string;
+  state: string;
+  pin: string;
+  message: string;
+  enquiryId?: string;
+}): string {
+  const lines = [
+    'New enquiry received on CheckOut.pe',
+    record.enquiryId ? `Reference: ${record.enquiryId}` : '',
+    '',
+    `Name: ${record.name}`,
+    `Email: ${record.email}`,
+    `Mobile: ${record.mobile}`,
+    `Address: ${record.address}`,
+    `City: ${record.city}`,
+    `State: ${record.state}`,
+    `PIN: ${record.pin}`,
+    '',
+    'Message:',
+    record.message,
+  ];
 
-  if (!host || !user || !pass) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
+  return lines.filter(Boolean).join('\n');
 }
 
 function authMiddleware(
@@ -159,8 +174,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
   try {
     if (mailer) {
-      await mailer.sendMail({
-        from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+      await sendMail(mailer, {
         to: email,
         subject,
         text,
@@ -215,6 +229,138 @@ app.post('/api/auth/verify-otp', (req, res) => {
   });
 
   res.json({ message: 'Login successful.' });
+});
+
+app.post('/api/enquiry', async (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const mobile = String(req.body?.mobile ?? '').trim();
+  const address = String(req.body?.address ?? '').trim();
+  const city = String(req.body?.city ?? '').trim();
+  const state = String(req.body?.state ?? '').trim();
+  const pin = String(req.body?.pin ?? '').trim();
+  const message = String(req.body?.message ?? '').trim();
+
+  if (!name || !email || !mobile || !address || !city || !state || !pin || !message) {
+    res.status(400).json({
+      error: 'Name, email, mobile number, address, city, state, PIN, and message are required.',
+    });
+    return;
+  }
+
+  if (!EMAIL_PATTERN.test(email)) {
+    res.status(400).json({ error: 'Please enter a valid email address.' });
+    return;
+  }
+
+  if (!/^\d{6}$/.test(pin)) {
+    res.status(400).json({ error: 'Please enter a valid 6-digit PIN code.' });
+    return;
+  }
+
+  if (
+    name.length > 200 ||
+    email.length > 320 ||
+    mobile.length > 30 ||
+    address.length > 500 ||
+    city.length > 100 ||
+    state.length > 100 ||
+    pin.length > 10 ||
+    message.length > 5000
+  ) {
+    res.status(400).json({ error: 'One or more fields exceed the allowed length.' });
+    return;
+  }
+
+  if (!isSqlConfigured()) {
+    res.status(503).json({ error: 'Enquiry storage is not configured. Please try again later.' });
+    return;
+  }
+
+  if (!mailer) {
+    res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
+    return;
+  }
+
+  const ipAddress = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '')
+    .split(',')[0]
+    .trim();
+
+  let enquiryId: string;
+
+  try {
+    enquiryId = await insertEnquiry({
+      name,
+      email,
+      mobile,
+      address,
+      city,
+      state,
+      pin,
+      message,
+      ipAddress: ipAddress || undefined,
+    });
+  } catch (error) {
+    console.error('Failed to save enquiry:', error);
+    res.status(500).json({ error: 'Unable to save your enquiry. Please try again.' });
+    return;
+  }
+
+  const enquiryDetails = formatEnquiryEmail({
+    name,
+    email,
+    mobile,
+    address,
+    city,
+    state,
+    pin,
+    message,
+    enquiryId,
+  });
+
+  try {
+    await sendMail(mailer, {
+      to: ENQUIRY_TO_EMAIL,
+      subject: `[CheckOut Enquiry] ${name}`,
+      text: enquiryDetails,
+      replyTo: email,
+    });
+
+    await sendMail(mailer, {
+      to: email,
+      subject: 'We received your enquiry — CheckOut.pe',
+      text: [
+        `Hi ${name},`,
+        '',
+        'Thank you for contacting CheckOut.pe. We have received your enquiry and our team will get back to you soon.',
+        '',
+        'Your submission:',
+        `Name: ${name}`,
+        `Email: ${email}`,
+        `Mobile: ${mobile}`,
+        `Address: ${address}`,
+        `City: ${city}`,
+        `State: ${state}`,
+        `PIN: ${pin}`,
+        '',
+        'Message:',
+        message,
+        '',
+        `Reference: ${enquiryId}`,
+        '',
+        '— CheckOut.pe Team',
+      ].join('\n'),
+    });
+  } catch (error) {
+    console.error('Failed to send enquiry email:', error);
+    res.status(500).json({ error: 'Your enquiry was saved but email delivery failed. Our team has been notified.' });
+    return;
+  }
+
+  res.json({
+    message: 'Enquiry submitted successfully.',
+    enquiryId,
+  });
 });
 
 app.post('/api/auth/logout', (_req, res) => {
@@ -366,9 +512,6 @@ async function startServer(): Promise<void> {
   } catch (error) {
     console.error('Failed to initialize CMS storage:', error);
     if (isSqlConfigured()) {
-      console.error(
-        'SQL init failed — API will not start. Check MSSQL_PASSWORD is quoted if it contains $. Run: npm run db:test',
-      );
       process.exit(1);
     }
   }
