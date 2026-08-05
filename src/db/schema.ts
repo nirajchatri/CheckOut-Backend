@@ -109,6 +109,22 @@ IF COL_LENGTH(N'dbo.enquiries', N'pin') IS NULL
 BEGIN
   ALTER TABLE dbo.enquiries ADD pin NVARCHAR(10) NOT NULL CONSTRAINT DF_enquiries_pin DEFAULT ('');
 END;
+
+IF OBJECT_ID(N'dbo.investor_details', N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.investor_details (
+    investor_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+    name NVARCHAR(200) NOT NULL,
+    email NVARCHAR(320) NOT NULL,
+    mobile NVARCHAR(30) NOT NULL,
+    fund_name NVARCHAR(300) NOT NULL,
+    message NVARCHAR(MAX) NOT NULL CONSTRAINT DF_investor_details_message DEFAULT (''),
+    ip_address NVARCHAR(45) NULL,
+    created_at DATETIME2 NOT NULL CONSTRAINT DF_investor_details_created DEFAULT (SYSUTCDATETIME())
+  );
+  CREATE INDEX IX_investor_details_created ON dbo.investor_details (created_at DESC);
+  CREATE INDEX IX_investor_details_email ON dbo.investor_details (email);
+END;
 `;
 
 export async function ensureSchema(): Promise<void> {

@@ -12,6 +12,7 @@ import {
 } from './content/cmsDefaults.ts';
 import { isSqlConfigured } from './db/config.ts';
 import { insertEnquiry } from './db/enquiryStore.ts';
+import { insertInvestor } from './db/investorStore.ts';
 import { generateOtp, hashValue } from './crypto.ts';
 import { createMailer, formatMailErrorHint, getMailConfigSummary, sendMail, verifyGoogleMailAccess } from './mailer.ts';
 import { registerGoogleAuthRoutes, USER_COOKIE_NAME } from './registerGoogleAuth.ts';
@@ -32,6 +33,7 @@ const JWT_SECRET = process.env.JWT_SECRET ?? 'change-me-in-production';
 const COOKIE_NAME = 'checkout_cms_session';
 const OTP_TTL_MS = 10 * 60 * 1000;
 const ENQUIRY_TO_EMAIL = (process.env.ENQUIRY_TO_EMAIL ?? 'niraj@checkout.pe').toLowerCase();
+const INVESTOR_TO_EMAIL = (process.env.INVESTOR_TO_EMAIL ?? 'checkout.pe@gmail.com').toLowerCase();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type OtpRecord = {
@@ -73,6 +75,30 @@ function formatEnquiryEmail(record: {
     '',
     'Message:',
     record.message,
+  ];
+
+  return lines.filter(Boolean).join('\n');
+}
+
+function formatInvestorEmail(record: {
+  name: string;
+  email: string;
+  mobile: string;
+  fundName: string;
+  message: string;
+  investorId?: string;
+}): string {
+  const lines = [
+    'New pitch deck investor access request on CheckOut.pe',
+    record.investorId ? `Reference: ${record.investorId}` : '',
+    '',
+    `Investor Name: ${record.name}`,
+    `Email: ${record.email}`,
+    `Mobile: ${record.mobile}`,
+    `Investor Fund Name: ${record.fundName}`,
+    '',
+    'Message:',
+    record.message || '(none)',
   ];
 
   return lines.filter(Boolean).join('\n');
@@ -191,8 +217,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
   try {
     const mailer = await createMailer();
-    const mailMode = getMailConfigSummary().mode;
-    if (mailMode !== 'none') {
+    if (mailer) {
       await sendMail(mailer, {
         to: email,
         subject,
@@ -203,7 +228,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
     }
 
     res.json({
-      message: mailMode !== 'none'
+      message: mailer
         ? 'OTP sent to your email.'
         : 'OTP generated (check server console in development).',
     });
@@ -303,7 +328,7 @@ app.post('/api/enquiry', async (req, res) => {
   }
 
   const mailer = await createMailer();
-  if (getMailConfigSummary().mode === 'none') {
+  if (!mailer) {
     res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
     return;
   }
@@ -386,6 +411,98 @@ app.post('/api/enquiry', async (req, res) => {
   res.json({
     message: 'Enquiry submitted successfully.',
     enquiryId,
+  });
+});
+
+app.post('/api/investor-access', async (req, res) => {
+  const name = String(req.body?.name ?? '').trim();
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const mobile = String(req.body?.mobile ?? '').trim();
+  const fundName = String(req.body?.fundName ?? '').trim();
+  const message = String(req.body?.message ?? '').trim();
+
+  if (!name || !email || !mobile || !fundName) {
+    res.status(400).json({
+      error: 'Investor name, email, mobile number, and investor fund name are required.',
+    });
+    return;
+  }
+
+  if (!EMAIL_PATTERN.test(email)) {
+    res.status(400).json({ error: 'Please enter a valid email address.' });
+    return;
+  }
+
+  if (
+    name.length > 200 ||
+    email.length > 320 ||
+    mobile.length > 30 ||
+    fundName.length > 300 ||
+    message.length > 5000
+  ) {
+    res.status(400).json({ error: 'One or more fields exceed the allowed length.' });
+    return;
+  }
+
+  if (!isSqlConfigured()) {
+    res.status(503).json({ error: 'Investor storage is not configured. Please try again later.' });
+    return;
+  }
+
+  const mailer = await createMailer();
+  if (!mailer) {
+    res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
+    return;
+  }
+
+  const ipAddress = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '')
+    .split(',')[0]
+    .trim();
+
+  let investorId: string;
+
+  try {
+    investorId = await insertInvestor({
+      name,
+      email,
+      mobile,
+      fundName,
+      message,
+      ipAddress: ipAddress || undefined,
+    });
+  } catch (error) {
+    console.error('Failed to save investor details:', error);
+    res.status(500).json({ error: 'Unable to save investor details. Please try again.' });
+    return;
+  }
+
+  const investorDetails = formatInvestorEmail({
+    name,
+    email,
+    mobile,
+    fundName,
+    message,
+    investorId,
+  });
+
+  try {
+    await sendMail(mailer, {
+      to: INVESTOR_TO_EMAIL,
+      subject: `[CheckOut Pitch Deck] Investor Access — ${name}`,
+      text: investorDetails,
+      replyTo: email,
+    });
+  } catch (error) {
+    console.error('Failed to send investor access email:', error);
+    res.status(500).json({
+      error: 'Your details were saved but email delivery failed. Please contact the CheckOut team.',
+    });
+    return;
+  }
+
+  res.json({
+    message: 'Investor details submitted successfully.',
+    investorId,
   });
 });
 
@@ -545,8 +662,8 @@ async function startServer(): Promise<void> {
 
   const mailer = await createMailer();
   const mail = getMailConfigSummary();
-  console.log(`Mail transport: ${mail.mode}${mail.mode === 'none' ? ' (OTP/enquiry emails disabled)' : ''}`);
-
+  console.log(`Mail transport: ${mail.mode}${mailer ? '' : ' (OTP/enquiry emails disabled)'}`);
+      return;
   if (mail.mode === 'google-oauth') {
     try {
       await verifyGoogleMailAccess();
@@ -556,6 +673,27 @@ async function startServer(): Promise<void> {
       console.error(
         'OTP emails will fail until you re-run /api/auth/google/mail-setup and update GOOGLE_REFRESH_TOKEN.',
       );
+    }
+  }
+
+    }
+
+    if (error instanceof Error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.status(500).json({ error: 'Unexpected server error.' });
+  },
+);
+
+async function startServer(): Promise<void> {
+  try {
+    await initializeStore();
+  } catch (error) {
+    console.error('Failed to initialize CMS storage:', error);
+    if (isSqlConfigured()) {
+      process.exit(1);
     }
   }
 

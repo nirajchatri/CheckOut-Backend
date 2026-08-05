@@ -35,8 +35,7 @@ CMS API and database layer for the CheckOut website. Handles authenticated admin
    - Enable the **Gmail API**.
    - Add authorized redirect URI: `http://localhost:3001/api/auth/google/callback` (and production: `https://api.checkout.pe/api/auth/google/callback`).
    - Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_MAIL_USER` in `.env`.
-   - Start the backend, then open `http://localhost:3001/api/auth/google/mail-setup` (or run `npm run google:oauth-setup` for instructions).
-   - Copy `GOOGLE_REFRESH_TOKEN` from the callback page into `.env`.
+   - Run `npm run google:oauth-setup` and paste the refresh token into `GOOGLE_REFRESH_TOKEN`.
 
    OTP emails, enquiry notifications, CMS admin OTP, and “Continue with Google” login use this configuration.
 
@@ -60,8 +59,6 @@ CMS API and database layer for the CheckOut website. Handles authenticated admin
 |---------|-------------|
 | `npm run dev` | Start CMS API on port 3001 |
 | `npm run db:init` | Create SQL schema and seed/migrate CMS data |
-| `npm run sync:production` | Pull CMS + FD rates from production API into local storage |
-| `npm run google:oauth-setup` | One-time Gmail OAuth refresh token setup |
 | `npm run lint` | Type-check with TypeScript |
 
 ## API Endpoints
@@ -73,12 +70,8 @@ CMS API and database layer for the CheckOut website. Handles authenticated admin
 | PUT | `/api/content` | Yes | Save CMS content |
 | POST | `/api/upload` | Yes | Upload CMS images |
 | GET | `/api/media/:filename` | No | Serve uploaded images |
-| POST | `/api/auth/request-otp` | No | Request CMS login OTP (sent via Gmail OAuth or SMTP) |
+| POST | `/api/auth/request-otp` | No | Request login OTP |
 | POST | `/api/auth/verify-otp` | No | Verify OTP and create session |
-| GET | `/api/auth/google/mail-setup` | No | One-time Gmail send OAuth (returns refresh token page) |
-| GET | `/api/auth/google` | No | Start Google OAuth (`purpose=admin` or `user`) |
-| GET | `/api/auth/google/callback` | No | Google OAuth callback |
-| GET | `/api/auth/user/me` | Cookie | Current user session (Google login) |
 | POST | `/api/auth/logout` | No | Clear session |
 | GET | `/api/auth/me` | Yes | Current admin session |
 
