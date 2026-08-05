@@ -7,6 +7,8 @@
     "dev": "tsx src/index.ts",
     "db:init": "tsx src/db/runInit.ts",
     "db:migrate-saas": "tsx src/db/runMigrateSaas.ts",
+    "sync:production": "tsx src/syncFromProduction.ts",
+    "google:oauth-setup": "tsx src/googleOAuthSetup.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "googleapis": "^174.0.0",
     "jsonwebtoken": "^9.0.2",
     "mssql": "^12.7.0",
     "multer": "^1.4.5-lts.2",

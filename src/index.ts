@@ -13,7 +13,9 @@ import {
 import { isSqlConfigured } from './db/config.ts';
 import { insertEnquiry } from './db/enquiryStore.ts';
 import { generateOtp, hashValue } from './crypto.ts';
-import { createMailer, sendMail } from './mailer.ts';
+import { createMailer, getMailConfigSummary, sendMail } from './mailer.ts';
+import { registerGoogleAuthRoutes, USER_COOKIE_NAME } from './registerGoogleAuth.ts';
+import { isGoogleOAuthConfigured } from './googleOAuth.ts';
 import { upload } from './multer.ts';
 import { getStorageMode, initializeStore, readContent, writeContent } from './store.ts';
 import {
@@ -100,7 +102,7 @@ function authMiddleware(
 }
 
 const app = express();
-const mailer = createMailer();
+const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(
   cors({
@@ -111,17 +113,32 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+registerGoogleAuthRoutes(app, {
+  adminEmail: ADMIN_EMAIL,
+  cmsCookieName: COOKIE_NAME,
+  getJwtSecret,
+  isProduction,
+});
+
 app.get('/api/health', async (_req, res) => {
+  const mail = getMailConfigSummary();
   const payload: {
     ok: boolean;
     storage: ReturnType<typeof getStorageMode>;
     sqlConfigured: boolean;
     sqlConnected?: boolean;
     sqlError?: string;
+    mail: ReturnType<typeof getMailConfigSummary> & { ready: boolean };
+    googleOAuthConfigured: boolean;
   } = {
     ok: true,
     storage: getStorageMode(),
     sqlConfigured: isSqlConfigured(),
+    mail: {
+      ...mail,
+      ready: mail.mode !== 'none',
+    },
+    googleOAuthConfigured: isGoogleOAuthConfigured(),
   };
 
   if (isSqlConfigured()) {
@@ -173,6 +190,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
   const text = `Your CheckOut CMS login code is ${otp}. It expires in 10 minutes.`;
 
   try {
+    const mailer = await createMailer();
     if (mailer) {
       await sendMail(mailer, {
         to: email,
@@ -277,6 +295,7 @@ app.post('/api/enquiry', async (req, res) => {
     return;
   }
 
+  const mailer = await createMailer();
   if (!mailer) {
     res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
     return;
@@ -365,6 +384,7 @@ app.post('/api/enquiry', async (req, res) => {
 
 app.post('/api/auth/logout', (_req, res) => {
   res.clearCookie(COOKIE_NAME);
+  res.clearCookie(USER_COOKIE_NAME);
   res.json({ message: 'Logged out.' });
 });
 
@@ -515,6 +535,10 @@ async function startServer(): Promise<void> {
       process.exit(1);
     }
   }
+
+  const mailer = await createMailer();
+  const mail = getMailConfigSummary();
+  console.log(`Mail transport: ${mail.mode}${mailer ? '' : ' (OTP/enquiry emails disabled)'}`);
 
   app.listen(PORT, () => {
     console.log(`CheckOut CMS server running on http://localhost:${PORT}`);
