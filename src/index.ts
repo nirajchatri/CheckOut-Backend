@@ -449,12 +449,6 @@ app.post('/api/investor-access', async (req, res) => {
     return;
   }
 
-  const mailer = await createMailer();
-  if (!mailer) {
-    res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
-    return;
-  }
-
   const ipAddress = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '')
     .split(',')[0]
     .trim();
@@ -485,13 +479,24 @@ app.post('/api/investor-access', async (req, res) => {
     investorId,
   });
 
+  const mailSummary = getMailConfigSummary();
+  const canSendMail = mailSummary.mode !== 'none';
+
   try {
-    await sendMail(mailer, {
-      to: INVESTOR_TO_EMAIL,
-      subject: `[CheckOut Pitch Deck] Investor Access — ${name}`,
-      text: investorDetails,
-      replyTo: email,
-    });
+    if (canSendMail) {
+      const mailer = await createMailer();
+      await sendMail(mailer, {
+        to: INVESTOR_TO_EMAIL,
+        subject: `[CheckOut Pitch Deck] Investor Access — ${name}`,
+        text: investorDetails,
+        replyTo: email,
+      });
+    } else if (!isProduction) {
+      console.log(`[Investor Access] Would email ${INVESTOR_TO_EMAIL}:\n${investorDetails}`);
+    } else {
+      res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
+      return;
+    }
   } catch (error) {
     console.error('Failed to send investor access email:', error);
     res.status(500).json({
@@ -663,7 +668,6 @@ async function startServer(): Promise<void> {
   const mailer = await createMailer();
   const mail = getMailConfigSummary();
   console.log(`Mail transport: ${mail.mode}${mailer ? '' : ' (OTP/enquiry emails disabled)'}`);
-      return;
   if (mail.mode === 'google-oauth') {
     try {
       await verifyGoogleMailAccess();
@@ -673,27 +677,6 @@ async function startServer(): Promise<void> {
       console.error(
         'OTP emails will fail until you re-run /api/auth/google/mail-setup and update GOOGLE_REFRESH_TOKEN.',
       );
-    }
-  }
-
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({ error: error.message });
-      return;
-    }
-
-    res.status(500).json({ error: 'Unexpected server error.' });
-  },
-);
-
-async function startServer(): Promise<void> {
-  try {
-    await initializeStore();
-  } catch (error) {
-    console.error('Failed to initialize CMS storage:', error);
-    if (isSqlConfigured()) {
-      process.exit(1);
     }
   }
 
