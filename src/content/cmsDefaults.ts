@@ -20,6 +20,7 @@ export type CmsSectionId =
   | 'hero'
   | 'about'
   | 'trusted'
+  | 'fdCalculator'
   | 'features'
   | 'stats'
   | 'dicgc'
@@ -41,6 +42,7 @@ export const CMS_PAGE_SECTIONS: CmsPageSection[] = [
   { id: 'hero', label: 'Hero', fieldSection: 'Hero' },
   { id: 'about', label: 'About', fieldSection: 'About' },
   { id: 'trusted', label: 'Trusted Companies', fieldSection: 'Trusted Companies' },
+  { id: 'fdCalculator', label: 'Fixed Deposit Investment Calculator', fieldSection: 'Fixed Deposit Investment Calculator' },
   { id: 'features', label: 'Features', fieldSection: 'Features' },
   { id: 'stats', label: 'Stats & Team', fieldSection: 'Stats & Team' },
   { id: 'dicgc', label: 'DICGC Insurance', fieldSection: 'DICGC Insurance' },
@@ -57,6 +59,7 @@ export const DEFAULT_SECTION_VISIBILITY: Record<CmsSectionId, boolean> = {
   hero: true,
   about: true,
   trusted: true,
+  fdCalculator: true,
   features: true,
   stats: true,
   dicgc: true,
@@ -79,11 +82,40 @@ export function mergeSectionOrder(order: CmsSectionId[] | undefined): CmsSection
 
   for (const section of CMS_PAGE_SECTIONS) {
     if (!next.includes(section.id)) {
-      next.push(section.id);
+      const defaultIndex = DEFAULT_SECTION_ORDER.indexOf(section.id);
+      const anchor = DEFAULT_SECTION_ORDER.slice(defaultIndex + 1).find((id) => next.includes(id));
+      if (anchor) {
+        next.splice(next.indexOf(anchor), 0, section.id);
+      } else {
+        next.push(section.id);
+      }
     }
   }
 
-  return next;
+  return normalizeHomeSectionOrder(next);
+}
+
+/** Keep DICGC between the FD calculator and What We Offer on the homepage. */
+function normalizeHomeSectionOrder(order: CmsSectionId[]): CmsSectionId[] {
+  if (!order.includes('dicgc')) {
+    return order;
+  }
+
+  const withoutDicgc: CmsSectionId[] = order.filter((id) => id !== 'dicgc');
+  const fdCalculatorIndex = withoutDicgc.indexOf('fdCalculator');
+  const featuresIndex = withoutDicgc.indexOf('features');
+
+  if (fdCalculatorIndex >= 0 && featuresIndex > fdCalculatorIndex) {
+    withoutDicgc.splice(featuresIndex, 0, 'dicgc');
+    return withoutDicgc;
+  }
+
+  if (fdCalculatorIndex >= 0) {
+    withoutDicgc.splice(fdCalculatorIndex + 1, 0, 'dicgc');
+    return withoutDicgc;
+  }
+
+  return order;
 }
 
 export function getOrderedPageSections(order: CmsSectionId[]): CmsPageSection[] {
