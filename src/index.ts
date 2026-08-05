@@ -13,7 +13,7 @@ import {
 import { isSqlConfigured } from './db/config.ts';
 import { insertEnquiry } from './db/enquiryStore.ts';
 import { generateOtp, hashValue } from './crypto.ts';
-import { createMailer, getMailConfigSummary, sendMail } from './mailer.ts';
+import { createMailer, formatMailErrorHint, getMailConfigSummary, sendMail, verifyGoogleMailAccess } from './mailer.ts';
 import { registerGoogleAuthRoutes, USER_COOKIE_NAME } from './registerGoogleAuth.ts';
 import { isGoogleOAuthConfigured } from './googleOAuth.ts';
 import { upload } from './multer.ts';
@@ -191,7 +191,8 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
   try {
     const mailer = await createMailer();
-    if (mailer) {
+    const mailMode = getMailConfigSummary().mode;
+    if (mailMode !== 'none') {
       await sendMail(mailer, {
         to: email,
         subject,
@@ -202,15 +203,17 @@ app.post('/api/auth/request-otp', async (req, res) => {
     }
 
     res.json({
-      message: mailer
+      message: mailMode !== 'none'
         ? 'OTP sent to your email.'
         : 'OTP generated (check server console in development).',
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    const hint = formatMailErrorHint(error);
     console.error('Failed to send OTP email:', error);
     res.status(500).json({
       error: 'Failed to send OTP email.',
+      hint,
       detail: process.env.NODE_ENV === 'production' ? undefined : detail,
     });
   }
@@ -300,7 +303,7 @@ app.post('/api/enquiry', async (req, res) => {
   }
 
   const mailer = await createMailer();
-  if (!mailer) {
+  if (getMailConfigSummary().mode === 'none') {
     res.status(503).json({ error: 'Email service is not configured. Please try again later.' });
     return;
   }
@@ -542,7 +545,19 @@ async function startServer(): Promise<void> {
 
   const mailer = await createMailer();
   const mail = getMailConfigSummary();
-  console.log(`Mail transport: ${mail.mode}${mailer ? '' : ' (OTP/enquiry emails disabled)'}`);
+  console.log(`Mail transport: ${mail.mode}${mail.mode === 'none' ? ' (OTP/enquiry emails disabled)' : ''}`);
+
+  if (mail.mode === 'google-oauth') {
+    try {
+      await verifyGoogleMailAccess();
+      console.log(`Gmail OAuth verified for ${process.env.GOOGLE_MAIL_USER ?? 'sender mailbox'}`);
+    } catch (error) {
+      console.error('Gmail OAuth verification failed on startup:', error);
+      console.error(
+        'OTP emails will fail until you re-run /api/auth/google/mail-setup and update GOOGLE_REFRESH_TOKEN.',
+      );
+    }
+  }
 
   app.listen(PORT, () => {
     console.log(`CheckOut CMS server running on http://localhost:${PORT}`);
