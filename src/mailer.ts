@@ -1,6 +1,8 @@
 import nodemailer from 'nodemailer';
+import { google } from 'googleapis';
 import {
   getGoogleMailUser,
+  getGoogleRedirectUri,
   isGoogleMailConfigured,
   isGoogleOAuthConfigured,
 } from './googleOAuth.ts';
@@ -37,16 +39,37 @@ export async function createMailer(): Promise<nodemailer.Transporter | null> {
   cachedMode = resolveMailTransportMode();
 
   if (cachedMode === 'google-oauth') {
+    const mailUser = getGoogleMailUser();
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      getGoogleRedirectUri(),
+    );
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    });
+
     cachedMailer = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         type: 'OAuth2',
-        user: getGoogleMailUser(),
+        user: mailUser,
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+        accessToken: async () => {
+          const tokenResponse = await oauth2Client.getAccessToken();
+          const accessToken =
+            typeof tokenResponse === 'string'
+              ? tokenResponse
+              : tokenResponse?.token ?? undefined;
+          if (!accessToken) {
+            throw new Error('Unable to refresh Google access token for Gmail.');
+          }
+          return accessToken;
+        },
       },
-    });
+    } as nodemailer.TransportOptions);
     return cachedMailer;
   }
 

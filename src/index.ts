@@ -207,8 +207,12 @@ app.post('/api/auth/request-otp', async (req, res) => {
         : 'OTP generated (check server console in development).',
     });
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error('Failed to send OTP email:', error);
-    res.status(500).json({ error: 'Failed to send OTP email.' });
+    res.status(500).json({
+      error: 'Failed to send OTP email.',
+      detail: process.env.NODE_ENV === 'production' ? undefined : detail,
+    });
   }
 });
 
