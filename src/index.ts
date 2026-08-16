@@ -37,6 +37,22 @@ const ENQUIRY_TO_EMAIL = (process.env.ENQUIRY_TO_EMAIL ?? 'niraj@checkout.pe').t
 const INVESTOR_TO_EMAIL = (process.env.INVESTOR_TO_EMAIL ?? 'checkout.pe@gmail.com').toLowerCase();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Comma-separated CMS_CORS_ORIGIN values, with production website defaults. */
+function getCorsOrigins(): string[] {
+  const fromEnv = (process.env.CMS_CORS_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  const defaults = [
+    'http://localhost:3000',
+    'https://checkout.pe',
+    'https://www.checkout.pe',
+  ];
+
+  return [...new Set([...fromEnv, ...defaults])];
+}
+
 type OtpRecord = {
   hash: string;
   expiresAt: number;
@@ -133,7 +149,15 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(
   cors({
-    origin: process.env.CMS_CORS_ORIGIN ?? 'http://localhost:3000',
+    origin(origin, callback) {
+      const allowed = getCorsOrigins();
+      // Non-browser clients (curl, server-to-server) send no Origin.
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
   }),
 );

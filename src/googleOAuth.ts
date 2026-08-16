@@ -55,7 +55,11 @@ export function isGoogleMailConfigured(): boolean {
 }
 
 export function getFrontendOrigin(): string {
-  return (process.env.CMS_CORS_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
+  const fromEnv = (process.env.CMS_CORS_ORIGIN ?? '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  return fromEnv[0] || 'http://localhost:3000';
 }
 
 export function sanitizeReturnTo(returnTo: string | undefined): string {
