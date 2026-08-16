@@ -13,6 +13,7 @@ import {
 import { isSqlConfigured } from './db/config.ts';
 import { insertEnquiry } from './db/enquiryStore.ts';
 import { insertInvestor } from './db/investorStore.ts';
+import { answerPitchDeckChat } from './pitchDeckChat.ts';
 import { generateOtp, hashValue } from './crypto.ts';
 import { createMailer, formatMailErrorHint, getMailConfigSummary, sendMail, verifyGoogleMailAccess } from './mailer.ts';
 import { registerGoogleAuthRoutes, USER_COOKIE_NAME } from './registerGoogleAuth.ts';
@@ -509,6 +510,43 @@ app.post('/api/investor-access', async (req, res) => {
     message: 'Investor details submitted successfully.',
     investorId,
   });
+});
+
+app.post('/api/pitch-deck-chat', async (req, res) => {
+  const message = String(req.body?.message ?? '').trim();
+  const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+
+  if (!message) {
+    res.status(400).json({ error: 'Message is required.' });
+    return;
+  }
+
+  if (message.length > 4000) {
+    res.status(400).json({ error: 'Message is too long (max 4000 characters).' });
+    return;
+  }
+
+  const history = historyRaw
+    .slice(0, 12)
+    .map((item: { role?: unknown; content?: unknown }) => ({
+      role: item?.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+      content: String(item?.content ?? '').trim().slice(0, 4000),
+    }))
+    .filter((item: { content: string }) => item.content.length > 0);
+
+  try {
+    const result = await answerPitchDeckChat({ message, history });
+    res.json({
+      reply: result.reply,
+      model: result.model,
+      usedWebSearch: result.usedWebSearch,
+    });
+  } catch (error) {
+    console.error('Pitch deck chat failed:', error);
+    const detail = error instanceof Error ? error.message : 'Unable to answer right now.';
+    const status = /not configured|LLM_Config|XeroCode SQL/i.test(detail) ? 503 : 500;
+    res.status(status).json({ error: detail });
+  }
 });
 
 app.post('/api/auth/logout', (_req, res) => {
