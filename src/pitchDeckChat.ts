@@ -1,5 +1,6 @@
 import { getOpenAiConfig } from './db/llmConfigStore.ts';
 import { getPitchDeckChatSystemPrompt } from './content/pitchDeckChatKnowledge.ts';
+import { sanitizePitchDeckChatReply } from './pitchDeckChatFormat.ts';
 
 export type ChatHistoryMessage = {
   role: 'user' | 'assistant';
@@ -188,7 +189,7 @@ export async function answerPitchDeckChat(options: {
       enableWebSearch: true,
     });
     return {
-      reply: result.reply,
+      reply: sanitizePitchDeckChatReply(result.reply),
       model: config.modelName,
       usedWebSearch: result.usedWebSearch,
     };
@@ -204,7 +205,7 @@ export async function answerPitchDeckChat(options: {
         history,
       });
       return {
-        reply,
+        reply: sanitizePitchDeckChatReply(reply),
         model: config.modelName,
         usedWebSearch: false,
       };

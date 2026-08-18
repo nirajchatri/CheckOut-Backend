@@ -90,7 +90,12 @@ export function getPitchDeckChatSystemPrompt(): string {
     'When web facts conflict with the knowledge pack on CheckOut-specific claims, prefer the knowledge pack and say so briefly.',
     'If you are unsure about a CheckOut-specific fact, say you do not have that detail and suggest contacting niraj@checkout.pe.',
     'Do not invent traction numbers, customers, partnerships, or closed funding beyond what the knowledge pack states.',
-    'Keep answers investor-friendly. Use short paragraphs or bullets when helpful.',
+    'Keep answers investor-friendly. Use short paragraphs and bullet or numbered lists when helpful.',
+    'Formatting rules for the chat bubble:',
+    '- Use markdown only: **bold** for key terms, - for bullets, 1. for numbered lists, and ## for short section headings.',
+    '- Never include citation markers, footnotes, source IDs, or junk characters such as 【】 † [] source tags.',
+    '- Do not wrap the answer in a code fence. Do not dump a wall of unformatted text.',
+    '- Separate sections with a blank line. Keep each bullet on its own line.',
     '',
     getCheckoutKnowledgePack(),
   ].join('\n');
